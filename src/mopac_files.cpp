@@ -52,27 +52,28 @@ using std::stod;
 /**************************************/
 // Keywords	
 
-string _keywords= "KEYWORDS";
-string _mozyme	= "mozyme";
-string _MOZYME	= "MOZYME";
-string _n_elec  = "NUM_ELECTRONS";
-string _overlap = "OVERLAP_MATRIX[";
-string _atom_xa	= "ATOM_X:ANGSTROMS[";
-string _hof		= "HEAT_OF_FORMATION:";
-string _num_a_el= "NUM_ALPHA_ELECTRONS=";
-string _num_b_el= "NUM_BETA_ELECTRONS=";
-string _elec_en = "ENERGY_ELECTRONIC:EV=";
-string _chg		= "CHARGE";
-string _orbital = "ORBITAL";
-string _inv_mat = "INVERSE_MATRIX[";
-string _keywords2= "Keywords:";
-string _atom_el	= "ATOM_EL[";
-string _atom_cor= "ATOM_CORE[";
-string _atom_ao = "AO_ATOMINDEX[";
-string _sym_type= "ATOM_SYMTYPE";
-string _ao_zeta = "AO_ZETA[";
-string _ao_pqn  = "ATOM_PQN[";
-string _atom_chg = "ATOM_CHARGES[";
+string _keywords= "KEYWORDS";					//0
+string _mozyme	= "mozyme";						//1
+string _MOZYME	= "MOZYME";						//2
+string _n_elec  = "NUM_ELECTRONS";				//3
+string _overlap = "OVERLAP_MATRIX[";			//4
+string _atom_xa	= "ATOM_X:ANGSTROMS[";			//5
+string _hof		= "HEAT_OF_FORMATION:";			//6
+string _num_a_el= "NUM_ALPHA_ELECTRONS=";		//7
+string _num_b_el= "NUM_BETA_ELECTRONS=";		//8
+string _elec_en = "ENERGY_ELECTRONIC:EV=";		//9
+string _tot_en	= "TOTAL_ENERGY:EV=";			//9
+string _chg		= "CHARGE";						//10
+string _orbital = "ORBITAL";					//11
+string _inv_mat = "INVERSE_MATRIX[";			//12
+string _keywords2= "Keywords:";					//13
+string _atom_el	= "ATOM_EL[";					//14
+string _atom_cor= "ATOM_CORE[";					//15
+string _atom_ao = "AO_ATOMINDEX[";				//16
+string _sym_type= "ATOM_SYMTYPE";				//17
+string _ao_zeta = "AO_ZETA[";					//18
+string _ao_pqn  = "ATOM_PQN[";					//19
+string _atom_chg = "ATOM_CHARGES[";				//10
 
 vector<string> _states = {"SINGLET", "DOUBLET", "TRIPLET", "QUARTET","QUINTET"};
 /**************************************/
@@ -115,7 +116,7 @@ mopac_files::mopac_files(const char* file_name):
 							RHF = true;
 						}
 					}
-				}			
+				}
 				else if ( Buffer.lines[i].IF_word(_n_elec,0,13) ){
 					string tmp_a(Buffer.lines[i].words[0],14,Buffer.lines[0].words[0].size()-14);
 					molecule.num_of_electrons = stoi(tmp_a);
@@ -140,7 +141,13 @@ mopac_files::mopac_files(const char* file_name):
 				}
 				else if ( Buffer.lines[i].IF_word(_elec_en,0,21) ){
 					string word1 ( Buffer.lines[i].words[0],21,14);
-					molecule.energy_tot = D_E_conv(word1);
+					molecule.elec_energy = D_E_conv(word1);
+					molecule.elec_energy *= 0.0367493;
+				}
+				else if ( Buffer.lines[i].IF_word(_tot_en,0,16) ){
+					string word2 ( Buffer.lines[i].words[0],16,14);
+					molecule.energy_tot = D_E_conv(word2);
+					molecule.energy_tot *= 0.0367493;
 				}
 			}
 		}else if ( check_file_ext(".out",file_name ) ) {
@@ -182,13 +189,13 @@ void mopac_files::parse_aux(){
 	vector<unsigned> _out(6);
 	
 	Ibuffer Buffer(name_f,_keywords,_overlap);	
-	for( unsigned i=0; i<Buffer.nLines-1;i++){			
+	for( unsigned i=0; i<Buffer.nLines-1;i++){
 		if ( Buffer.lines[i].IF_word(_atom_el,0,8) ){
 			_in[0] = i+1;
 		}else if ( Buffer.lines[i].IF_word(_atom_cor,0,10) ){
-			_out[0] = i;			
+			_out[0] = i;
 		}else if ( Buffer.lines[i].IF_word(_atom_xa,0,17) ){
-			_in[1] = i+1;	
+			_in[1] = i+1;
 		}else if ( Buffer.lines[i].IF_word(_atom_ao,0,13) ){
 			_out[1] = i;
 			_in[2] = i+1;
@@ -208,23 +215,30 @@ void mopac_files::parse_aux(){
 		}
 	}
 	
+	
 	for( unsigned int i=_in[0]; i<_out[0]; i++ ){
-		for ( unsigned j=0;j<Buffer.lines[i].words.size();j++){
+		for ( unsigned j=0; j<Buffer.lines[i].words.size(); j++ ){
 				Iatom atom;
 				atom.set_type( Buffer.lines[i].words[j] );
 				molecule.add_atom(atom);
 		}
 	}
 	
-	int counter = 0;	
+	unsigned counter = 0;
+	
+	for (unsigned i=_out[0]+1; i<_in[1]-1; i++ ){
+		for ( unsigned j=0;j<Buffer.lines[i].words.size();j++){
+			molecule.atoms[counter++].atomicN  = Buffer.lines[i].get_double(0);
+		}
+	}
+	
+	counter = 0;
 	
 	for (unsigned i=_in[1]; i<_out[1]; i++ ){
 		molecule.atoms[counter].xcoord  = Buffer.lines[i].get_double(0);
 		molecule.atoms[counter].ycoord 	= Buffer.lines[i].get_double(1);
 		molecule.atoms[counter++].zcoord = Buffer.lines[i].get_double(2);
 	}
-	
-	//molecule.print_coordinates();
 	
 	for ( unsigned i=_in[2]; i<_out[2]; i++ ){
 		for ( unsigned j=0; j<Buffer.lines[i].words.size(); j++ ){ 
@@ -247,7 +261,7 @@ void mopac_files::parse_aux(){
 
 	for (unsigned i=_in[4]; i<_out[4]; i++){
 		for ( unsigned j=0; j<Buffer.lines[i].words.size(); j++){
-			zetas.push_back( Buffer.lines[i].get_double(j) );		
+			zetas.push_back( Buffer.lines[i].get_double(j) );
 		}
 	}
 	
@@ -258,6 +272,7 @@ void mopac_files::parse_aux(){
 	}
 	
 	counter = 0;
+	
 	for (unsigned i=_in[6]; i<Buffer.nLines-1; i++){
 		for (unsigned j=0;j<Buffer.lines[i].words.size();j++){
 			molecule.atoms[counter++].charge = Buffer.lines[i].get_double(j);
@@ -288,10 +303,11 @@ void mopac_files::parse_aux(){
 	this->get_mo_energies(false);
 	if ( !RHF ) {
 		this->get_mo(true);
-		this->get_mo_energies(true);		
+		this->get_mo_energies(true);
 	}	
 	
 	counter = 0;
+	
 	for (unsigned i=0;i<molecule.atoms.size();i++){
 		for ( unsigned j=0;j<molecule.atoms[i].norb;j++){
 			molecule.atoms[i].orbitals[j].alpha = zetas[counter];
@@ -670,7 +686,16 @@ void mopac_files::parse_mgf(){
 		m_log->input_message(molecule.get_ao_number() );
 		m_log->input_message("\n");
 		m_log->inp_delim(2);
-	
+		
+		for(unsigned i=0;i<molecule.atoms.size();i++){
+			if (molecule.atoms[i].atomicN > 10 ){
+				molecule.atoms[i].atomicN -= 10;
+			}
+			else if ( molecule.atoms[i].atomicN > 2 ){
+				molecule.atoms[i].atomicN -= 2;
+			}
+		}
+		
 	}else{
 		m_log->write_error("MGF file does not exist, skipping its parsing process!");
 	}

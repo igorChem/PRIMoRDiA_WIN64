@@ -75,7 +75,7 @@ class Icube {
 		Icube log_cube();
 		Icube SQ();
 		double calc_cube_integral();
-		Icube normalize();
+		void normalize( double norm );
 		double diff_integral(const Icube& cube);
 		double similarity_index(Icube& cube, std::string type);
 		Icube calculate_complement(bool clog);
@@ -83,7 +83,7 @@ class Icube {
 		double get_scalar(double x, double y, double z);	 
 		void add_data(std::vector < std::vector < std::vector<double> > >& data);
 		void write_cube(std::string cubeName);
-		void get_cube_stats(double& mean, double& sum, double& min, double& max);
+		void get_cube_stats(double& mean, double& min, double& max);
 		void print();
 };
 

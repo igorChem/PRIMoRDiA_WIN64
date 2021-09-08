@@ -38,6 +38,7 @@
 #include "../include/test_p.h"
 #include "../include/interface.h"
 #include "../include/pos_traj.h"
+#include "../include/scripts.h"
 
 /*********************************************************/
 using std::unique_ptr;
@@ -86,7 +87,7 @@ interface::interface(int argc, char** argv) :
 	m_log->input_message("\n");
 	m_log->inp_delim(2);
 	m_log->input_message("Provided Arguments: ");
-	for ( int i=0;i<m_argc;i++){
+	for ( unsigned i=0; i<m_argc; i++ ){
 		m_log->input_message("\n\t");
 		m_log->input_message(m_argv[i]);
 	}
@@ -131,7 +132,11 @@ void interface::run(){
 			}
 			traj_rd traj(rs_l);
 			traj.init_from_folder();
+			traj.calculate_res_stats();
 			traj.write_residues_reports();
+			string from_f = "from_folder";
+			scripts res_analy( from_f.c_str(), "residuos_analysis" );
+			res_analy.write_r_residuos_barplot();
 		}
 	}
 	else {
@@ -176,7 +181,7 @@ void interface::Comp_cube(){
 	unique_ptr<QMparser> qmfile ( new QMparser ( m_argv[2].c_str(),m_argv[4]) );
 	Imolecule molecule ( move(qmfile->get_molecule() ) );
 	qmfile.reset(nullptr);
-	unique_ptr<gridgen> dens ( new gridgen(stoi(m_argv[3].c_str() ),move(molecule) ) );
+	unique_ptr<gridgen> dens ( new gridgen( stoi(m_argv[3].c_str() ),move(molecule) ) );
 	dens->calculate_density();
 	dens->write_grid();
 	Icube comple  = dens->density.calculate_complement(false);
@@ -212,6 +217,7 @@ void interface::test_run(){
 	test_p teste;
 	teste.init_general_test();
 	//teste.test_reaction_analysis();
+	//teste.test_traj_analysis();
 }
 /***********************************************************************/
 void interface::write_input(){
@@ -248,7 +254,7 @@ void interface::write_input(){
 	std::vector<std::string> fnames; 
 	fs::path c_path = fs::current_path();
 	for (const auto & entry : fs::directory_iterator(c_path)){
-		fnames.push_back( entry.path().filename().u8string() );
+		fnames.push_back( entry.path().filename() );
 	}
 	std::sort( fnames.begin(), fnames.end() );
 		

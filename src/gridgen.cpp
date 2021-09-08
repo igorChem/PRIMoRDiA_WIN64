@@ -456,37 +456,6 @@ void gridgen::calculate_density_orca(){
 	density.name = name;
 }
 /***********************************************************************/
-void gridgen::calculate_mep_from_charges(){
-	unsigned int x,y,z,i;
-	double xi,yi,zi,xj,yj,zj,r,invR,v = 0.0;
-	double precision 				= 1e-13;
-	
-	omp_set_num_threads(NP);
-	#pragma omp parallel for collapse(3) shared(precision) private(xi,yi,zi,xj,yj,zj,r,invR,x,y,z,i) reduction(+:v)
-	for ( x=0;x<grid_len[0];x++ ){
-		for ( y=0;y<grid_len[1];y++ ){
-			for ( z=0;z<grid_len[2];z++ ){
-				xi	=	x*grid_sides[0] + origin[0];
-				yi	=	y*grid_sides[1] + origin[1];
-				zi	=	z*grid_sides[2] + origin[2] ;
-				for ( i=0;i<molecule.atoms.size();i++ ){
-					xj	=	xi -	molecule.atoms[i].xcoord;
-					yj	=	yi -	molecule.atoms[i].ycoord;
-					zj	=	zi -	molecule.atoms[i].zcoord;
-					r	=	sqrt(xj*xj +  yj*yj + zj*zj);
-					invR	= 1/(r+precision);
-					v	+= invR*molecule.atoms[i].charge;
-				}
-				psi[x][y][z] = v;
-				v= 0;
-			}
-		}
-	} 
-	
-	density.add_data(psi);
-	density.name = name;
-}
-/***********************************************************************/
 Icube& gridgen::get_cube(){ return density; }
 /***********************************************************************/
 Icube& gridgen::calc_HOMO(){
@@ -580,7 +549,6 @@ Icube gridgen::calc_band_NAS(int bandn){
 		}
 	}
 	temp = temp/cnt;
-	//cout << "used " << cnt << " MO" << endl;
 	return temp;
 }
 /***********************************************************************/
@@ -588,16 +556,13 @@ Icube gridgen::calc_EBLC_EAS(){
 	Icube temp = density;
 	double coefficient = 0.0;
 	temp 	= temp*0.0;
-	//int cnt 	= 0;
 	for ( int i=0;i<=molecule.homoN;i++){
 		coefficient = exp(-abs(molecule.orb_energies[i]-molecule.homo_energy ) );
 		if ( coefficient > 0.36 ){
 			this->calculate_orb(i,false);
 			temp = temp + density.SQ()*coefficient;
-			//cnt++;
 		}
 	}
-	//cout << "used " << cnt << " MO" << endl;
 	return temp;
 } 
 /***********************************************************************/
@@ -605,7 +570,6 @@ Icube gridgen::calc_EBLC_NAS( ){
 	Icube temp = density;
 	double coefficient = 0.0;
 	temp = temp*0.0;
-	//int cnt = 0;
 	for ( int i=molecule.lumoN;i<=molecule.orb_energies.size();i++){
 		coefficient = exp(-abs(molecule.orb_energies[i]-molecule.lumo_energy ) );
 		if ( coefficient > 0.36 ){
@@ -614,7 +578,6 @@ Icube gridgen::calc_EBLC_NAS( ){
 			//cnt++;
 		}
 	}
-	//cout << "used " << cnt << " MO" << endl;
 	return temp;
 } 
 /***********************************************************************/

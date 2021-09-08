@@ -142,13 +142,13 @@ bool check_file_ext(string ext,const char* file_name){
 /*********************************************************************************/
 string get_file_name(const char* path_name){
 	fs::path f_name(path_name);
-	string resultS( f_name.filename().u8string() );
+	string resultS( f_name.filename() );
 	return resultS;
 }
 /*********************************************************************************/
 string get_file_ext(const char* path_name){
 	fs::path f_name(path_name);
-	string resultS( f_name.extension().u8string() );
+	string resultS( f_name.extension() );
 	return resultS;
 }
 /*********************************************************************************/
@@ -186,7 +186,7 @@ double mean_dvec(std::vector<double>& vec){
 	double result = 0.0;
 	for(unsigned int i=0;i<vec.size();i++){
 		result += vec[i];
-	}	
+	}
 	return result/vec.size();
 }
 /********************************************************************************/
@@ -208,6 +208,15 @@ double sum_dvec(std::vector<double>& vec){
 		result += vec[i];
 	}	
 	return result;
+}
+/********************************************************************************/
+std::vector<double>& norm_dvec(std::vector<double>& vec, double size){
+	double max = sum_dvec(vec);
+	for(unsigned int i=0; i<vec.size(); i++ ){
+		vec[i] /= max;
+		vec[i] *= size;
+	}
+	return vec;
 }
 /********************************************************************************/
 string str_array(std::string& line, int in, int fin){

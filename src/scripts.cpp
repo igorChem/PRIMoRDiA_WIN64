@@ -55,18 +55,32 @@ scripts::scripts(	string Nm	,
 	if ( s_type == "pymols" || s_type == "pymols_pdb" ){
 		fname += ".pym";
 	}else{
-		fname += ".R";		
+		fname += ".R";
 	}
-	script_file.open( fname.c_str() );	
+	script_file.open( fname.c_str() );
 	
-	if( s_type == "pymols" || s_type == "pymols_pdb" ){		
+	if( s_type == "pymols" || s_type == "pymols_pdb" ){
 		script_file << "preset.publication(selection='all')\n"
 					<< "set sphere_scale, 0.2\n"
 					<< "set bg_rgb, white \n"
-					<< "set stick_radius, 0.2\n";
+					<< "set stick_radius, 0.18\n";
 	}else{
 		script_file << "#!/usr/bin/env Rscript\n";
 	}	
+}
+/**********************************************************/
+scripts::scripts(const scripts& rhs):
+	file_name(rhs.file_name)     	,
+	s_type(rhs.s_type)				{
+	
+}
+/***********************************************************/
+scripts& scripts::operator=(const scripts& rhs){
+	if ( this != &rhs){
+		file_name	= rhs.file_name;
+		s_type		= rhs.s_type;
+	}
+	return *this;
 }
 /**************************************************************************/
 scripts::~scripts(){
@@ -79,7 +93,7 @@ void scripts::write_r_dos(vector<double>& energies){
 	Name 		+= ".DOS";
 	std::ofstream dos_file( Name.c_str() );
 	dos_file << "Energy\n";
-	for(unsigned i=0;i<energies.size();i++) {dos_file << energies[i] << endl; }
+	for( unsigned i=0; i<energies.size(); i++ ) { dos_file << energies[i] << endl; }
 	
 	m_log->input_message("Outputing Density of States information to file.");
 	
@@ -92,77 +106,217 @@ void scripts::write_r_dos(vector<double>& energies){
 				 << "p\ndev.off()";
 }
 /****************************************************************************/
-void scripts::write_pymol_cube(local_rd& lrdVol, bool fixed){
+void scripts::write_pymol_cube(local_rd& lrdVol){
 	
-	if ( lrdVol.EAS.voxelN > 0 ){
+	if ( lrdVol.lrds[5].voxelN > 0 ){
 		string pdb_name = file_name + ".pdb";
 		std::string typestr;
-		if ( lrdVol.finite_diff ){ 
-			typestr = "_FD";
+		std::string typestr2;
+		if ( lrdVol.FD ){ 
+			typestr = lrdVol.name+"FD_";
+			typestr2 = get_file_name( typestr.c_str() );
 		}
 		else{ 
-			typestr = "_FOA";
+			typestr = lrdVol.name+"FOA_";
+			typestr2 = get_file_name( typestr.c_str() );
 		}
 		
-		double mean,max,sd,min = 0.0;
+		double mean,max,sum,min = 0.0;
+		
+		//isos used in the fukui functions and MOs
 		double iso1 = 0.0005;
 		double iso2 = 0.005;
-		double iso3 = 0.0005;
-		double iso4 = 0.005;
-		if  ( !fixed ) {	
-			lrdVol.EAS.get_cube_stats(mean,max,sd,min);
-			iso1 = mean;
-			iso2 = iso1*20;
-			lrdVol.NAS.get_cube_stats(mean,max,sd,min);
-			iso3 = mean;
-			iso4 = iso3*20;
-		}
-		lrdVol.Hardness.get_cube_stats(mean,max,sd,min);
-		double iso5 = mean;
-		double iso6 = iso5*10;
+		double iso3 = -0.0005;
+		double iso4 = -0.005;
 		
-		script_file	<< "load "	<< pdb_name						<<  " \n"
-					<< "load "	<< lrdVol.EAS.name				<< ".cube\n"
-					<< "load "	<< lrdVol.NAS.name				<< ".cube\n"
-					<< "load "	<< lrdVol.RAS.name				<< ".cube\n"
-					<< "load "	<< lrdVol.Dual.name				<< ".cube\n"
-					<< "load "	<< lrdVol.Hardness.name			<< ".cube\n"
-					<< "volume " << lrdVol.EAS.name				<< "_vol, "	<< lrdVol.EAS.name			<< " \n" 
-					<< "volume " << lrdVol.NAS.name				<< "_vol, " << lrdVol.NAS.name			<< " \n" 
-					<< "volume " << lrdVol.RAS.name				<< "_vol, " << lrdVol.RAS.name			<< " \n" 
-					<< "volume " << lrdVol.Dual.name			<< "_vol, " << lrdVol.Dual.name			<< " \n" 
-					<< "volume " << lrdVol.Dual.name			<< "2_vol, "<< lrdVol.Dual.name			<< " \n" 
-					<< "volume " << lrdVol.Hardness.name		<< "_vol, " << lrdVol.Hardness.name		<< " \n" 
-					<< "volume_color " << lrdVol.EAS.name		<< "_vol, " << iso1 << " cyan 0.02 "	<< iso2 	<< " blue 0.05 \n"
-					<< "volume_color " << lrdVol.NAS.name		<< "_vol, " << iso3 << " pink 0.02 "	<< iso4		<< " red  0.05 \n"
-					<< "volume_color " << lrdVol.RAS.name		<< "_vol, " << iso1 << " yellow 0.02 "	<< iso2		<< " green 0.05 \n"
-					<< "volume_color " << lrdVol.Dual.name		<< "_vol, " << iso1 << " pink 0.03 "	<< iso2		<< " red 0.05 \n"
-					<< "volume_color " << lrdVol.Dual.name		<< "2_vol, "<< (-iso4) << " blue 0.05 "	<< (-iso3)	<< " cyan 0.02 \n"
-					<< "volume_color " << lrdVol.Hardness.name	<< "_vol, " << iso5 << " orange 0.003 "	<< iso6		<< " purple 0.05 \n";
+		//iso for LH LCP
+		lrdVol.lrds[9].get_cube_stats(mean,min,max);
+		double iso5 = mean*2;
+		double iso6 = iso5*30;
+		
+		//iso for LH Vee
+		lrdVol.lrds[10].get_cube_stats(mean,min,max);
+		double iso7 = mean;
+		double iso8 = iso7*10;
+		
+		//iso for potential Fukui
+		lrdVol.lrds[11].get_cube_stats(mean,min,max);
+		double iso9 = mean;
+		double iso10 = iso9*10;
+		
+		
+		//iso for LH int 
+		lrdVol.lrds[14].get_cube_stats(mean,min,max);
+		double iso11 = mean;
+		double iso12 = iso11*10;
+		
+		
+		lrdVol.lrds[15].get_cube_stats(mean,min,max);
+		double iso13 = min*0.1;
+		double iso14 = min*0.3;
+		double iso15 = max*0.1;
+		double iso16 = max*0.3;
+		
+		//iso for right potential Fukui
+		lrdVol.lrds[12].get_cube_stats(mean,min,max);
+		double iso17 = mean*4;
+		double iso18 = iso17*10;
+		
+		//iso for zero potential Fukui
+		lrdVol.lrds[13].get_cube_stats(mean,min,max);
+		double iso19 = mean*2;
+		double iso20 = iso19*15;
+		
+		//iso for 
+		lrdVol.lrds[16].get_cube_stats(mean,min,max);
+		double iso21 = mean;
+		double iso22 = iso21*10;
+		
+		//iso for 
+		lrdVol.lrds[17].get_cube_stats(mean,min,max);
+		double iso23 = 0.0002;
+		double iso24 = iso23*5;
+		
+		//iso for multiphilicity
+		lrdVol.lrds[18].get_cube_stats(mean,min,max);
+		double iso25 = -max*0.3;
+		double iso26 = -max*0.6;
+		double iso27 = max*0.3;
+		double iso28 = max*0.6;
+		
+		//iso for MEP
+		lrdVol.lrds[19].get_cube_stats(mean,min,max);
+		double iso29 = 0.05;
+		double iso30 = 0.5;
+		double iso31 = -0.5;
+		double iso32 = -0.05;
+		
+		//iso for 
+		lrdVol.lrds[20].get_cube_stats(mean,min,max);
+		double iso33 = max*0.01;
+		double iso34 = max*0.2;
+		
+		
+		script_file	<< "load "	<< pdb_name									<< " \n"
+					<< "load "	<< typestr << lrdVol.lrds[0].name			<< "_ph1.cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[0].name			<< "_ph2.cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[1].name			<< "_ph1.cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[1].name			<< "_ph2.cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[5].name			<< ".cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[6].name			<< ".cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[7].name			<< ".cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[8].name			<< "_ph1.cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[8].name			<< "_ph2.cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[9].name			<< ".cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[10].name			<< ".cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[11].name			<< ".cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[14].name			<< ".cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[15].name			<< "_ph1.cube\n"
+					<< "load "	<< typestr << lrdVol.lrds[15].name			<< "_ph2.cube\n"
+					<< "volume " << typestr2 << lrdVol.lrds[0].name			<< "_ph1_volume, "	<< typestr2 << lrdVol.lrds[0].name	<<	"_ph1"	<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[0].name			<< "_ph2_volume, "	<< typestr2 << lrdVol.lrds[0].name	<<	"_ph2"	<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[1].name			<< "_ph1_volume, "	<< typestr2 << lrdVol.lrds[1].name	<<	"_ph1"	<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[1].name			<< "_ph2_volume, "	<< typestr2 << lrdVol.lrds[1].name	<<	"_ph2"	<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[5].name			<< "_volume, "		<< typestr2 << lrdVol.lrds[5].name				<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[6].name			<< "_volume, "		<< typestr2 << lrdVol.lrds[6].name				<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[7].name			<< "_volume, "		<< typestr2 << lrdVol.lrds[7].name				<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[8].name			<< "_ph1_volume, "	<< typestr2 << lrdVol.lrds[8].name	<<	"_ph1"	<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[8].name			<< "_ph2_volume, "	<< typestr2 << lrdVol.lrds[8].name	<<	"_ph2"	<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[9].name			<< "_volume, "		<< typestr2 << lrdVol.lrds[9].name				<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[10].name		<< "_volume, "		<< typestr2 << lrdVol.lrds[10].name				<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[11].name		<< "_volume, "		<< typestr2 << lrdVol.lrds[11].name				<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[14].name		<< "_volume, "		<< typestr2 << lrdVol.lrds[14].name				<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[15].name		<< "_ph1_volume, "	<< typestr2 << lrdVol.lrds[15].name	<<	"_ph1"	<< " \n" 
+					<< "volume " << typestr2 << lrdVol.lrds[15].name		<< "_ph2_volume, "	<< typestr2 << lrdVol.lrds[15].name	<<	"_ph2"	<< " \n" 
+					<< "volume_color " << typestr2 << lrdVol.lrds[0].name	<< "_ph1_volume, "	<< iso1		<< " cyan 0.02 "	<< iso2		<< " blue 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[0].name	<< "_ph2_volume, "	<< iso4		<< " red 0.04 "		<< iso3		<< " orange 0.01 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[1].name	<< "_ph1_volume, "	<< iso1 	<< " cyan 0.02 "	<< iso2		<< " blue 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[1].name	<< "_ph2_volume, "	<< iso4		<< " red 0.04 "		<< iso3		<< " orange 0.01 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[5].name	<< "_volume, "		<< iso1		<< " cyan 0.02 "	<< iso2		<< " blue 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[6].name	<< "_volume, "		<< iso1		<< " pink 0.02 "	<< iso2		<< " red  0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[7].name	<< "_volume, "		<< iso1		<< " yellow 0.02 "	<< iso2		<< " green 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[8].name	<< "_ph1_volume, "	<< iso1		<< " pink 0.03 "	<< iso2		<< " red 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[8].name	<< "_ph2_volume, "	<< iso4		<< " blue 0.05 "	<< iso3		<< " cyan 0.02 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[9].name	<< "_volume, "		<< iso5		<< " limon 0.02 "	<< iso6		<< " purpleblue 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[10].name	<< "_volume, "		<< iso7		<< " brightorange 0.001 "	<< iso8	<< " purple 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[11].name	<< "_volume, "		<< iso9		<< " aquamarine 0.002 "		<< iso10 << " purple 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[14].name	<< "_volume, "		<< iso11	<< " salmon 0.02 "			<< iso12	<< " slate 0.05 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[15].name	<< "_ph1_volume, "	<< iso14	<< " skyblue  0.04 "		<< iso13	<<" greencyan 0.01 \n"
+					<< "volume_color " << typestr2 << lrdVol.lrds[15].name	<< "_ph2_volume, "	<< iso15	<< " yelloworange 0.02 "	<< iso16	<< " warmpink 0.05 \n";
+		
+		if ( extra_RD ){
+			script_file	<< "load "	<< typestr << lrdVol.lrds[12].name			<< ".cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[13].name			<< ".cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[16].name			<< ".cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[17].name			<< ".cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[18].name			<< "_ph1.cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[18].name			<< "_ph2.cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[19].name			<< "_ph1.cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[19].name			<< "_ph2.cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[20].name			<< ".cube\n"
+						<< "load "	<< typestr << lrdVol.lrds[21].name			<< ".cube\n"
+						<< "volume " << typestr2 << lrdVol.lrds[12].name		<< "_volume, "		<< typestr2	<< lrdVol.lrds[12].name	<< " \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[13].name		<< "_volume, "		<< typestr2	<< lrdVol.lrds[13].name	<< " \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[16].name		<< "_volume, "		<< typestr2 << lrdVol.lrds[16].name	<< " \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[17].name		<< "_volume, "		<< typestr2 << lrdVol.lrds[17].name	<< " \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[18].name		<< "_ph1_volume, "	<< typestr2	<< lrdVol.lrds[18].name	<< "_ph1"	<<	" \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[18].name		<< "_ph2_volume, "	<< typestr2	<< lrdVol.lrds[18].name	<< "_ph2"	<<	" \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[19].name		<< "_ph1_volume, "	<< typestr2	<< lrdVol.lrds[19].name	<< "_ph1"	<<	" \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[19].name		<< "_ph2_volume, "	<< typestr2	<< lrdVol.lrds[19].name	<< "_ph2"	<<	" \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[20].name		<< "_volume, "		<< typestr2	<< lrdVol.lrds[20].name	<< " \n" 
+						<< "volume " << typestr2 << lrdVol.lrds[21].name		<< "_volume, "		<< typestr2	<< lrdVol.lrds[21].name	<< " \n" 
+						<< "volume_color " << typestr2 << lrdVol.lrds[12].name	<< "_volume, "		<< iso17	<< " cyan 0.0 "				<< iso18	<< " blue 0.05 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[13].name	<< "_volume, "		<< iso19	<< " yellow 0.0 "			<< iso20	<< " orange 0.05 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[16].name	<< "_volume, "		<< iso21 	<< " cyan 0.0 "				<< iso22	<< " blue 0.05 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[17].name	<< "_volume, "		<< iso23	<< " yellow 0.02 "			<< iso24	<< " orange 0.05 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[18].name	<< "_ph1_volume, "	<< iso26	<< " blue 0.04 "			<< iso25	<< " cyan 0.05 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[18].name	<< "_ph2_volume, "	<< iso27	<< " red 0.05 "				<< iso28	<< " pink  0.02 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[19].name	<< "_ph1_volume, "	<< iso29	<< " pink 0.0 "				<< iso30	<< " red  0.04 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[19].name	<< "_ph2_volume, "	<< iso31	<< " blue 0.04 "			<< iso32 << " aquamarine  0.0 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[20].name	<< "_volume, "		<< iso33	<< " greencyan 0.02 "		<< iso34	<< " green  0.05 \n"
+						<< "volume_color " << typestr2 << lrdVol.lrds[21].name	<< "_volume, "		<< iso7		<< " brightorange 0.001 "	<< iso8 	<< " purple 0.05 \n";
+		}
 	}
+	
+	
 }
 /**************************************************************************/
 void scripts::write_pymol_pdb(){
-	string fname = get_file_name( file_name.c_str() );	
 	
-	string load_pdb_basic = "load "+ fname + "_PDB_RD/" + fname;
-	script_file << load_pdb_basic  << "_EAS.pdb\n"
-				<< load_pdb_basic  << "_NAS.pdb\n"
-				<< load_pdb_basic  << "_RAS.pdb\n"
-				<< load_pdb_basic  << "_Netphilicity.pdb\n"
-				<< load_pdb_basic  << "_hardness_A.pdb\n"
-				<< load_pdb_basic  << "_hardness_B.pdb\n"
-				<< load_pdb_basic  << "_hardness_C.pdb\n"
-				<< load_pdb_basic  << "_hardness_D.pdb\n"
-				<< load_pdb_basic  << "_mep.pdb\n"
-				<< load_pdb_basic  << "_softness.pdb\n"
-				<< load_pdb_basic  << "_hypersoftness.pdb\n"
-				<< load_pdb_basic  << "_multiphilic.pdb\n"
-				<< load_pdb_basic  << "_electron_density.pdb\n"
-				<< "spectrum b, blue_white_red, minimum=-0.3, maximum=0.3\n"
+	
+	//std::ofstream script_f;
+	string fname = get_file_name( file_name.c_str() );
+	fname += ".pym";
+	//script_f.open( fname.c_str() );
+
+	string fname2 = fname.substr( 0,fname.size()-4 );
+
+	string load_pdb_basic = "load "+ fname2 + "_PDB_RD/" + fname2;
+	
+	script_file	<< load_pdb_basic  << "_nucleophilicity.pdb\n"	//0
+				<< load_pdb_basic  << "_electrophilicity.pdb\n"	//1
+				<< load_pdb_basic  << "_radicality.pdb\n"		//2
+				<< load_pdb_basic  << "_netphilicity.pdb\n"		//3
+				<< load_pdb_basic  << "_hardness_Vee.pdb\n"		//4
+				<< load_pdb_basic  << "_hardness_lcp.pdb\n"		//5
+				<< load_pdb_basic  << "_fukui_pot_left.pdb\n"	//6
+				<< load_pdb_basic  << "_fukui_pot_right.pdb\n"	//7
+				<< load_pdb_basic  << "_fukui_pot_zero.pdb\n"	//8
+				<< load_pdb_basic  << "_softness_dual.pdb\n"	//9
+				<< load_pdb_basic  << "_hyper_softness.pdb\n"	//10
+				<< load_pdb_basic  << "_fukushima.pdb\n"		//11
+				<< load_pdb_basic  << "_mep.pdb\n"				//12
+				<< load_pdb_basic  << "_hardness_TFD.pdb\n"		//13
+				<< load_pdb_basic  << "_softness_avg.pdb\n"		//14
+				<< load_pdb_basic  << "_hardness_int.pdb\n"		//15
+				<< load_pdb_basic  << "_multiphilicity.pdb\n"	//16
+				<< load_pdb_basic  << "_charge.pdb\n"			//17
+				<< load_pdb_basic  << "_electron_density.pdb\n"	//18
+				<< "spectrum b, blue_white_red, minimum=-0.5, maximum=0.5\n"
 				<< "spectrum b, white_yellow_orange_red_black, minimum=0.1, maximum=0.5\n"
 				<< "spectrum b, white_cyan_blue, minimum=0, maximum=0.1\n"
-				<< "spectrum b, white_pink_red, minimum=0, maximum=0.1\n";						
+				<< "spectrum b, white_magenta_purple_purpleblue_black, minimum=1, maximum=5\n"
+				<< "spectrum b, white_pink_red, minimum=0, maximum=0.1\n";
 }
 /***************************************************************************/
 void scripts::write_r_heatmap(vector< vector<double> > rd_numerical	, 
@@ -214,183 +368,182 @@ void scripts::write_r_residuos_barplot(){
 				<< "avg <-subset(data_stat,type=='AVG')\n"
 				<< "sd <-subset(data_stat,type=='SD')\n"
 				<< "#-------------------------------------\n" 
-				<< "p1 <-ggplot(avg, aes(x=res, y=EAS)) +\n"
+				<< "p1 <-ggplot( avg, aes(x=res, y=Nucleophilicity) ) +\n"
 				<< "geom_bar(stat='identity', color='black',fill='blue', position=position_dodge() ) +\n"
-				<< "theme_minimal()+\n"
-				<< "ylab('Nucleophilicity')+\n"
-				<< "xlab('Residues')+\n"				
-				<< "geom_errorbar(aes(ymin=NAS-sd$EAS,ymax=EAS+sd$EAS), width=.2, position=position_dodge(.9))\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tylab('Nucleophilicity')+\n"
+				<< "\txlab('Residues')+\n"
+				<< "\tgeom_errorbar(aes(ymin=Nucleophilicity-sd$Nucleophilicity,ymax=Nucleophilicity+sd$Nucleophilicity), width=.2, position=position_dodge(.9))\n"
 				<< "#-------------------------------------\n" 
-				<< "p2 <-ggplot(avg, aes(x=res, y=NAS)) +\n" 
-				<< "geom_bar(stat='identity', color='black',fill='red', position=position_dodge() ) +\n"
-				<< "theme_minimal()+\n"
-				<< "ylab('Electrophilicity')+\n"
-				<< "xlab('Residues')+\n"
-				<< "geom_errorbar(aes(ymin=NAS-sd$NAS,ymax=NAS+sd$NAS), width=.2, position=position_dodge(.9))\n"
+				<< "p2 <-ggplot(avg, aes(x=res, y=Electrophilicity)) +\n" 
+				<< "\tgeom_bar(stat='identity', color='black',fill='red', position=position_dodge() ) +\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tylab('Electrophilicity')+\n"
+				<< "\txlab('Residues')+\n"
+				<< "\tgeom_errorbar(aes(ymin=Electrophilicity-sd$Electrophilicity,ymax=Electrophilicity+sd$Electrophilicity), width=.2, position=position_dodge(.9))\n"
 				<< "#-------------------------------------\n" 
 				<< "p3 <-ggplot(avg, aes(x=res, y=Netphilicity)) +\n"
-				<< "geom_bar(stat='identity', color='black',fill='lightgreen', position=position_dodge() ) +\n"
-				<< "theme_minimal()+\n"
-				<< "ylab('Netphilicity')+\n"
-				<< "xlab('Residues')+\n"
-				<< "geom_errorbar(aes(ymin=Netphilicity-sd$Netphilicity,ymax=Netphilicity+sd$Netphilicity), width=.2, position=position_dodge(.9))\n"
+				<< "\tgeom_bar(stat='identity', color='black',fill='lightgreen', position=position_dodge() ) +\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tylab('Netphilicity')+\n"
+				<< "\txlab('Residues')+\n"
+				<< "\tgeom_errorbar(aes(ymin=Netphilicity-sd$Netphilicity,ymax=Netphilicity+sd$Netphilicity), width=.2, position=position_dodge(.9))\n"
 				<< "#-------------------------------------\n" 
-				<< "p4 <-ggplot(avg, aes(x=res, y=Hardness_A)) +\n"
-				<< "geom_bar(stat='identity', color='black',fill='orange', position=position_dodge() ) +\n"
-				<< "theme_minimal()+\n"
-				<< "ylab('Hardness (LCP)')+\n"
-				<< "xlab('Residues')+\n"
-				<< "geom_errorbar(aes(ymin=Hardness_A-sd$Hardness_A,ymax=Hardness_A+sd$Hardness_A), width=.2, position=position_dodge(.9))\n"
+				<< "p4 <-ggplot(avg, aes(x=res, y=Hardness_Vee)) +\n"
+				<< "\tgeom_bar(stat='identity', color='black',fill='orange', position=position_dodge() ) +\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tylab('Hardness Vee')+\n"
+				<< "\txlab('Residues')+\n"
+				<< "\tgeom_errorbar(aes(ymin=Hardness_Vee-sd$Hardness_Vee,ymax=Hardness_Vee+sd$Hardness_Vee), width=.2, position=position_dodge(.9))\n"
 				<< "#-------------------------------------\n" 
-				<< "p5 <-ggplot(avg, aes(x=res, y=Hardness_B)) +\n"
-				<< "geom_bar(stat='identity', color='black',fill='orange', position=position_dodge() ) +\n"
-				<< "theme_minimal()+\n"
-				<< "ylab('Hardness (MEP EE)')+\n"
-				<< "xlab('Residues')+\n"
-				<< "geom_errorbar(aes(ymin=Hardness_B-sd$Hardness_B,ymax=Hardness_B+sd$Hardness_B), width=.2, position=position_dodge(.9))\n"
+				<< "p5 <-ggplot(avg, aes(x=res, y=Hardness_LCP)) +\n"
+				<< "\tgeom_bar(stat='identity', color='black',fill='aquamarine3', position=position_dodge() ) +\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tylab('Hardness LCP')+\n"
+				<< "\txlab('Residues')+\n"
+				<< "\tgeom_errorbar(aes(ymin=Hardness_LCP-sd$Hardness_LCP,ymax=Hardness_LCP+sd$Hardness_LCP), width=.2, position=position_dodge(.9))\n"
 				<< "#-------------------------------------\n" 
-				<< "p6 <-ggplot(avg, aes(x=res, y=Hardness_C)) +\n"
-				<< "geom_bar(stat='identity', color='black',fill='orange', position=position_dodge() ) +\n"
-				<< "theme_minimal()+\n"
-				<< "ylab('Hardness (Fukui Potential)')+\n"
-				<< "xlab('Residues')+\n"
-				<< "geom_errorbar(aes(ymin=Hardness_C-sd$Hardness_C,ymax=Hardness_C+sd$Hardness_C), width=.2, position=position_dodge(.9))\n"
+				<< "p6 <-ggplot(avg, aes(x=res, y=Fukui_pot_left)) +\n"
+				<< "\tgeom_bar(stat='identity', color='black',fill='blueviolet', position=position_dodge() ) +\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tylab('Fukui Potential Left')+\n"
+				<< "\txlab('Residues')+\n"
+				<< "\tgeom_errorbar(aes(ymin=Fukui_pot_left-sd$Fukui_pot_left,ymax=Fukui_pot_left+sd$Fukui_pot_left), width=.2, position=position_dodge(.9))\n"
 				<< "#-------------------------------------\n" 
 				<< "p7 <-ggplot(avg, aes(x=res, y=Electron_Density)) +\n"
-				<< "geom_bar(stat='identity', color='black',fill='orange', position=position_dodge() ) +\n"
-				<< "theme_minimal()+\n"
-				<< "ylab('Electron Density')+\n"
-				<< "xlab('Residues')+\n"
-				<< "geom_errorbar(aes(ymin=Electron_Density-sd$Electron_Density,ymax=Electron_Density+sd$Electron_Density), width=.2, position=position_dodge(.9))\n"
+				<< "\tgeom_bar(stat='identity', color='black',fill='springgreen3', position=position_dodge() ) +\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tylab('Electron Density')+\n"
+				<< "\txlab('Residues')+\n"
+				<< "\tgeom_errorbar(aes(ymin=Electron_Density-sd$Electron_Density,ymax=Electron_Density+sd$Electron_Density), width=.2, position=position_dodge(.9))\n"
 				<< "#-------------------------------------\n" 
-				<< "png('EAS_res.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('Nph_res.png',units='in',res=1000,width=4.5,height=4)\n"
 				<< "p1\n"
-				<< "dev.off()\n"				
-				<< "png('NAS_res.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "dev.off()\n"
+				<< "png('Eph_res.png',units='in',res=1000,width=4.5,height=4)\n"
 				<< "p2\n"
-				<< "dev.off()\n"				
+				<< "dev.off()\n"
 				<< "png('NET_res.png',units='in',res=1000,width=4.5,height=4)\n"
 				<< "p3\n"
 				<< "dev.off()\n"
-				<< "png('Hardness_A_res.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('Hardness_Vee_res.png',units='in',res=1000,width=4.5,height=4)\n"
 				<< "p4\n"
 				<< "dev.off()\n"
-				<< "png('Hardness_B_res.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('Hardness_LCP_res.png',units='in',res=1000,width=4.5,height=4)\n"
 				<< "p5\n"
 				<< "dev.off()\n"
-				<< "png('Hardness_C_res.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('Fukui_pot_res.png',units='in',res=1000,width=4.5,height=4)\n"
 				<< "p6\n"
 				<< "dev.off()\n"
 				<< "png('Electron_dens_res.png',units='in',res=1000,width=4.5,height=4)\n"
 				<< "p7\n"
 				<< "dev.off()\n"
-				<< "#=====================================================\n" 				
+				<< "#=====================================================\n"
 				<< "dat <-read.table('residues_data_frames',header=T)\n"
 				<< "#-------------------------------------\n"	
-				<< "pm1<-ggplot(dat, aes(x = frame, y =NAS ))+\n"
-				<< "theme_minimal()+\n"
-				<< "geom_point(aes(color=res))+\n"
-				<< "geom_smooth(aes(color=res),method='loess')+\n"
-				<< "ylab('Electrophiliicty')+\n"
-				<< "xlab('Frame')\n"
+				<< "pm1<-ggplot(dat, aes(x = frame, y = Electrophilicity) )+\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tgeom_point(aes(color=res))+\n"
+				<< "\tgeom_smooth(aes(color=res),method='loess')+\n"
+				<< "\tylab('Electrophiliicty')+\n"
+				<< "\txlab('Frame')\n"
 				<< "#-------------------------------------\n"
-				<< "pm2<-ggplot(dat, aes(x = frame, y =EAS ))+\n"
-				<< "theme_minimal()+\n"
-				<< "geom_point(aes(color=res))+\n"
-				<< "geom_smooth(aes(color=res),method='loess')+\n"
-				<< "ylab('Nucleophilicity')+\n"
-				<< "xlab('Frame')\n"
+				<< "pm2<-ggplot(dat, aes(x = frame, y = Nucleophilicity ) )+\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tgeom_point(aes(color=res))+\n"
+				<< "\tgeom_smooth(aes(color=res),method='loess')+\n"
+				<< "\tylab('Nucleophilicity')+\n"
+				<< "\txlab('Frame')\n"
 				<< "#-------------------------------------\n"
 				<< "pm3<-ggplot(dat, aes(x = frame, y =Netphilicity ))+\n"
-				<< "theme_minimal()+\n"
-				<< "geom_point(aes(color=res))+\n"
-				<< "geom_smooth(aes(color=res),method='loess')+\n"				
-				<< "ylab('Netphilicity')+\n"
-				<< "xlab('Frame')\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tgeom_point(aes(color=res))+\n"
+				<< "\tgeom_smooth(aes(color=res),method='loess')+\n"
+				<< "\tylab('Netphilicity')+\n"
+				<< "\txlab('Frame')\n"
 				<< "#-------------------------------------\n"
-				<< "pm4<-ggplot(dat, aes(x = frame, y =Hardness_A ))+\n"
-				<< "theme_minimal()+\n"
-				<< "geom_point(aes(color=res))+\n"
-				<< "geom_smooth(aes(color=res),method='loess')+\n"
-				<< "ylab('Hardness_A')+\n"
-				<< "xlab('Frame')\n"
+				<< "pm4<-ggplot(dat, aes(x = frame, y =Hardness_Vee ))+\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tgeom_point(aes(color=res))+\n"
+				<< "\tgeom_smooth(aes(color=res),method='loess')+\n"
+				<< "\tylab('Hardness Vee')+\n"
+				<< "\txlab('Frame')\n"
 				<< "#-------------------------------------\n"
-				<< "pm5<-ggplot(dat, aes(x = frame, y =Hardness_B ))+\n"
-				<< "theme_minimal()+\n"
-				<< "geom_point(aes(color=res))+\n"
-				<< "geom_smooth(aes(color=res),method='loess')+\n"
-				<< "ylab('Hardness_B')+\n"
-				<< "xlab('Frame')\n"
+				<< "pm5<-ggplot(dat, aes(x = frame, y =Hardness_LCP ))+\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tgeom_point(aes(color=res))+\n"
+				<< "\tgeom_smooth(aes(color=res),method='loess')+\n"
+				<< "\tylab('Hardness LCP')+\n"
+				<< "\txlab('Frame')\n"
 				<< "#-------------------------------------\n"
-				<< "pm6<-ggplot(dat, aes(x = frame, y =Hardness_C ))+\n"
-				<< "theme_minimal()+\n"
-				<< "geom_point(aes(color=res))+\n"
-				<< "geom_smooth(aes(color=res),method='loess')+\n"
-				<< "ylab('Hardness_C')+\n"
-				<< "xlab('Frame')\n"
+				<< "pm6<-ggplot(dat, aes(x = frame, y =Fukui_pot_left))+\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tgeom_point(aes(color=res))+\n"
+				<< "\tgeom_smooth(aes(color=res),method='loess')+\n"
+				<< "\tylab('Fukui Potential')+\n"
+				<< "\txlab('Frame')\n"
 				<< "#-------------------------------------\n"
-				<< "pm7<-ggplot(dat, aes(x = frame, y =Softness ))+\n"
-				<< "theme_minimal()+\n"
-				<< "geom_point(aes(color=res))+\n"
-				<< "geom_smooth(aes(color=res),method='loess')+\n"
-				<< "ylab('Softness')+\n"
-				<< "xlab('Frame')\n"
+				<< "pm7<-ggplot(dat, aes(x = frame, y =hyper_softness ))+\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tgeom_point(aes(color=res))+\n"
+				<< "\tgeom_smooth(aes(color=res),method='loess')+\n"
+				<< "\tylab('hyper_softness')+\n"
+				<< "\txlab('Frame')\n"
 				<< "#-------------------------------------\n"
 				<< "pm8<-ggplot(dat, aes(x = frame, y =Electron_Density ))+\n"
-				<< "theme_minimal()+\n"
-				<< "geom_point(aes(color=res))+\n"
-				<< "geom_smooth(aes(color=res),method='loess')+\n"
-				<< "ylab('Electron Density')+\n"
-				<< "xlab('Frame')\n"
+				<< "\ttheme_minimal()+\n"
+				<< "\tgeom_point(aes(color=res))+\n"
+				<< "\tgeom_smooth(aes(color=res),method='loess')+\n"
+				<< "\tylab('Electron Density')+\n"
+				<< "\txlab('Frame')\n"
 				<< "#-------------------------------------\n"
-				<< "png('eas_mov_avg.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "wdht = 5\n"
+				<< "png('nucleophilicity_mov_avg.png',units='in',res=1000,width=wdht,height=4)\n"
 				<< "pm1\n"
 				<< "dev.off()\n"
 				<< "#-------------------------------------\n"
-				<< "png('nas_mov_avg.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('electrophilicity_mov_avg.png',units='in',res=1000,width=wdht,height=4)\n"
 				<< "pm2\n"
 				<< "dev.off()\n"
 				<< "#-------------------------------------\n"				
-				<< "png('net_mov_avg.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('net_mov_avg.png',units='in',res=1000,width=wdht,height=4)\n"
 				<< "pm3\n"
 				<< "dev.off()\n"
 				<< "#-------------------------------------\n"
-				<< "png('hard_A_mov_avg.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('hard_Vee_mov_avg.png',units='in',res=1000,width=wdht,height=4)\n"
 				<< "pm4\n"
 				<< "dev.off()\n"
 				<< "#-------------------------------------\n"
-				<< "png('hard_B_mov_avg.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('hard_LCP_mov_avg.png',units='in',res=1000,width=wdht,height=4)\n"
 				<< "pm5\n"
 				<< "dev.off()\n"
 				<< "#-------------------------------------\n"
-				<< "png('hard_C_mov_avg.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('Fukui_pot_mov_avg.png',units='in',res=1000,width=wdht,height=4)\n"
 				<< "pm6\n"
 				<< "dev.off()\n"
 				<< "#-------------------------------------\n"				
-				<< "png('Softness_mov_avg.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('Hsoftness_mov_avg.png',units='in',res=1000,width=wdht,height=4)\n"
 				<< "pm7\n"
 				<< "dev.off()\n"
 				<< "#-------------------------------------\n"
-				<< "png('ED_mov_avg.png',units='in',res=1000,width=4.5,height=4)\n"
+				<< "png('ED_mov_avg.png',units='in',res=1000,width=wdht,height=4)\n"
 				<< "pm8\n"
 				<< "dev.off()\n"
 				<< "#-------------------------------------\n";			
-				
 }
 /*********************************************************************/
 void scripts::write_r_reaction_analysis(traj_rd& path_rd			,
-										vector<string>& pair_labels	,
 										ReactionAnalysis& r_info	,
 										string& nameb				){
 											
 	
-	vector<string> gl_names		= {"HOF","ECP","Hardness","Softness","Electrophilicity","Energy"};									
+	vector<string> gl_names		= {"HOF","ECP","Hardness","Softness","Electrophilicity","Energy"};
 	vector<string> gl_legends	= {"HOF \\n(kCal/mol)",
 									"ECP (eV)",
 									"Hardness \\n(eV)",
 									"Softness \\n(eV)",
 									"Electrophilicity \\n(eV)",
-									"Energy \\n(eV)"};									
+									"Energy \\n(eV)"};
 	
 	string delim = "#====================================================\n";
 	string delim2 = "#---------------------------------------------------\n";
@@ -460,6 +613,7 @@ void scripts::write_r_reaction_analysis(traj_rd& path_rd			,
 		}			
 	
 		c = 0;
+		/*
 		for( unsigned i=0; i<pair_labels.size(); i++){
 			pr_obj = "pr_";
 			pr_obj += to_string(c);
@@ -488,6 +642,7 @@ void scripts::write_r_reaction_analysis(traj_rd& path_rd			,
 				script_file << delim;
 			}
 		}
+		*/
 
 		if ( r_info.nrcs == 2 ){
 			c = 0;
@@ -537,6 +692,7 @@ void scripts::write_r_reaction_analysis(traj_rd& path_rd			,
 				}		
 			}	
 			c = 0;
+			/*
 			for( unsigned i=0; i<pair_labels.size(); i++){
 				pr_obj = "pr_";
 				pr_obj += to_string(c);
@@ -564,8 +720,10 @@ void scripts::write_r_reaction_analysis(traj_rd& path_rd			,
 					script_file << "dev.off()\n";
 					script_file << delim;
 				}
-			}		
+			}
+			 */
 		}	
+			
 	}else if ( r_info.ndim == 2 ){
 		for( unsigned i=0; i<gl_names.size(); i++){
 			script_file << "grc1_" << to_string(i) << " <-ggplot(df1,aes(x=rc1,y=rc2,z="
@@ -616,6 +774,8 @@ void scripts::write_r_reaction_analysis(traj_rd& path_rd			,
 					script_file<< delim;
 			}		
 		}
+		
+		/*
 		for( unsigned i=0; i<pair_labels.size(); i++){
 				pr_obj = "pr_";
 				pr_obj += to_string(c);
@@ -646,6 +806,7 @@ void scripts::write_r_reaction_analysis(traj_rd& path_rd			,
 					script_file << delim;
 			}
 		}
+		*/
 	}
 }
 

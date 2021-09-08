@@ -49,27 +49,18 @@ class local_rd {
 	public:
 		//member variables
 		std::string name;
-		bool finite_diff;
-		bool locHardness;
+		bool FD;
+		bool LH;
+		bool band;
+		bool TFD;
 		int charge;
-		Icube homo;
-		Icube lumo; 
-		Icube elec_dens;
-		Icube cation;
-		Icube anion; 
-		Icube EAS;
-		Icube NAS;
-		Icube RAS;
-		Icube Dual; 
-		Icube Hardness;
-		Icube Softness_Dual;
-		Icube Hyper_Softness;
-		Icube multifilic;
+		std::vector<Icube> lrds;
+		std::vector<std::string> rd_names;
 		//constructors/destructor
 		local_rd();
-		local_rd(const Icube& HOmo, const Icube& LUmo);
-		local_rd(const Icube& elec_dens, const Icube& HOmo, const Icube& LUmo);
-		local_rd(const Icube& elecDens, const Icube& cationDens, const Icube& anionDens,int chg);
+		local_rd(Icube HOmo,  Icube LUmo);
+		local_rd(Icube elec_dens, Icube HOmo, Icube LUmo);
+		local_rd(Icube elecDens, Icube cationDens, Icube anionDens,int chg);
 		local_rd(const local_rd& lrd_rhs);
 		local_rd& operator=(const local_rd& lrd_rhs);
 		local_rd(local_rd&& lrd_rhs) noexcept;
@@ -77,10 +68,11 @@ class local_rd {
 		~local_rd();
 		//member functions
 		friend local_rd operator-(const local_rd& lrd_lhs,const local_rd& lrd_rhs);	
-		void calculate_fukui();
-		void calculate_fukui_EW(const Imolecule& mol);
+		void calculate_fukui_Band(const Icube& homo_b, const Icube& lumo_b);
 		void calculate_RD(const global_rd& grd);
-		void calculate_hardness(const global_rd& grd, std::string method);
+		void calculate_Fukui_potential();
+		void calculate_hardness(const global_rd& grd);
+		void calculate_MEP(const Imolecule& mol);
 		void write_LRD();
 };
 
